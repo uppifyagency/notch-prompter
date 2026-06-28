@@ -804,10 +804,14 @@ $('start').onclick = enter;
 $('exit').onclick = exit;
 $('restart').onclick = () => { restart(); showControls(); };
 $('play').onclick = () => { playing ? pause() : play(); showControls(); };
-$('full').onclick = () => {
+// Fullscreen toggle — shared by the top-right button and the (tappable) notch hint,
+// so users who look at the hint can enter fullscreen without hunting for the icon.
+function toggleFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen();
   else $('stage').requestFullscreen?.().catch(() => {});
-};
+}
+$('full').onclick = toggleFullscreen;
+$('notchhint').onclick = toggleFullscreen;
 $('speed2').oninput = (e) => {
   const v = parseFloat(e.target.value);
   store.set('scrollSpeed', v);

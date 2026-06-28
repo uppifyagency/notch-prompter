@@ -468,6 +468,8 @@ dialog.pagepick::backdrop { background: rgba(0, 0, 0, 0.5); }
   padding: 9px 16px;
   backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
 }
+#notchhint { cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+#notchhint:hover { color: var(--text-1); border-color: var(--hairline-strong); }
 
 /* stage controls */
 #topctl, #botctl {
