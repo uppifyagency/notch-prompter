@@ -52,14 +52,15 @@ export class Prompter {
     const crgb = parseColor(cueColor);
     const spans = this.textEl.children;
 
+    // The "current" word is the first not-yet-fully-lit word. Computed in every
+    // mode: charCount advances by voice (Word Tracking), by speed (Classic), or
+    // by speech presence (Voice-Activated) — so all modes light words to keep pace.
     let nextIdx = -1;
-    if (wordTracking) {
-      for (let i = 0; i < spans.length; i++) {
-        const d = spans[i].dataset;
-        if (d.a === '1') continue;
-        const lit = Math.max(0, Math.min(+d.l, charCount - +d.s));
-        if (lit < +d.lc) { nextIdx = i; break; }
-      }
+    for (let i = 0; i < spans.length; i++) {
+      const d = spans[i].dataset;
+      if (d.a === '1') continue;
+      const lit = Math.max(0, Math.min(+d.l, charCount - +d.s));
+      if (lit < +d.lc) { nextIdx = i; break; }
     }
 
     let scrollTgt = null;
@@ -71,9 +72,7 @@ export class Prompter {
       const isCurrent = (i === nextIdx) || (charCount - charOff >= 0 && !fullyLit && !ann);
 
       let color, underline = false;
-      if (!wordTracking) {
-        color = ann ? rgba(crgb, 0.4) : fontColor;
-      } else if (ann) {
+      if (ann) {
         color = fullyLit ? rgba(crgb, brightness.read) : rgba(crgb, brightness.unread);
       } else if (fullyLit) {
         color = rgba(rgb, 0.3);

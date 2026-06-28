@@ -365,7 +365,7 @@ a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--
 
 /* hints */
 #notchhint, #micwarn {
-  position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
   max-width: 80%; text-align: center;
   font-size: 13px; color: var(--text-2);
   background: rgba(20, 20, 22, 0.7);
@@ -387,7 +387,15 @@ a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--
 #botctl { bottom: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); justify-content: center; }
 #stage.idle #topctl, #stage.idle #botctl { opacity: 0; pointer-events: none; }
 
-#statuswrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+/* status + page indicator — pinned to the bottom so they never overlap the
+   reader text (the reader hugs the top in pinned mode). Fades with the controls. */
+#statuswrap {
+  position: absolute; left: 50%; bottom: calc(98px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  z-index: 10; pointer-events: none; transition: opacity 0.3s ease;
+}
+#stage.idle #statuswrap { opacity: 0; }
 #status { font-size: 13px; color: var(--text-2); }
 #pageind { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .shint { color: var(--text-3); font-weight: 400; }
