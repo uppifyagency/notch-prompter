@@ -34,16 +34,23 @@
     </header>
 
     <section class="editor-card">
-      <textarea id="script" spellcheck="false" placeholder="Paste or write your script…"></textarea>
+      <div class="editor-wrap">
+        <div id="script-hl" class="hl-backdrop" aria-hidden="true"></div>
+        <textarea id="script" spellcheck="false" placeholder="Paste or write your script…"></textarea>
+      </div>
       <div class="editor-tools">
         <label class="tool">
           <svg class="ic"><use href="#i-doc"/></svg><span>Open file</span>
-          <input id="file" type="file" accept=".txt,.md,.pptx,text/*,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden />
+          <input id="file" type="file" accept=".txt,.md,.pptx,.key,text/*,application/vnd.openxmlformats-officedocument.presentationml.presentation" hidden />
         </label>
         <button class="tool" id="sample"><span>Sample</span></button>
+        <button class="tool" id="savefile"><span>Save</span></button>
         <button class="tool" id="share"><svg class="ic"><use href="#i-link"/></svg><span>Share link</span></button>
         <button class="tool" id="clear"><span>Clear</span></button>
+        <button class="tool" id="dictate"><svg class="ic"><use href="#i-mic"/></svg><span>Dictate</span></button>
+        <button class="tool" id="addpage"><span>+ Page</span></button>
       </div>
+      <div id="pages-bar" class="pages-bar" hidden></div>
     </section>
 
     <section class="panel">
@@ -56,6 +63,12 @@
       <div class="field" id="field-locale">
         <span class="flabel">Voice language</span>
         <select id="locale" class="select" aria-label="Voice recognition language"></select>
+      </div>
+
+      <div class="field" id="field-mic">
+        <span class="flabel">Microphone</span>
+        <select id="mic-device" class="select" aria-label="Microphone input device"></select>
+        <p class="fhint">Sets the waveform &amp; voice-activated input. Word-tracking uses the system default (browser limitation).</p>
       </div>
 
       <div class="field">
@@ -128,12 +141,31 @@
           <input id="pagedelay" class="slider" type="range" min="1" max="10" step="1" />
         </div>
       </div>
+      <div class="field">
+        <span class="flabel">Preview</span>
+        <div class="preview"><div id="pv-scroll"><div id="pv-text"></div></div></div>
+      </div>
+
+      <div class="panel-foot">
+        <button class="tool" id="about"><span>About</span></button>
+        <button class="tool" id="reset"><span>Reset all settings</span></button>
+      </div>
     </section>
 
     <button id="start" class="start">Start reading</button>
     <p class="colophon">Notch Prompter by Vlad — runs entirely in your browser. Nothing is uploaded.</p>
   </div>
 </main>
+
+<dialog id="about-dlg" class="about">
+  <h2>Notch Prompter <span id="about-version" class="muted"></span></h2>
+  <p>A browser teleprompter with a notch-pinned reader, voice word-tracking and an
+     Apple-style glass UI. Runs entirely in your browser — nothing is uploaded.</p>
+  <p class="muted">By Vlad Vrinceanu · inspired by the native <a href="https://github.com/f/textream" target="_blank" rel="noopener">Textream</a>.</p>
+  <button class="tool" id="about-close"><span>Close</span></button>
+</dialog>
+
+<dialog id="pagepick" class="pagepick" aria-label="Jump to page"></dialog>
 
 <!-- ============================ STAGE ============================ -->
 <div id="stage" hidden>
@@ -145,6 +177,7 @@
       <div id="elapsed-clock"></div>
       <div id="mic" role="button" tabindex="0" aria-label="Mute microphone" aria-pressed="false" title="Mute microphone"><svg class="ic"><use href="#i-mic"/></svg></div>
     </div>
+    <div id="reader-resize" class="reader-resize" aria-hidden="true" title="Drag to resize"></div>
   </div>
 
   <div id="done" hidden><div class="tick" aria-hidden="true"></div><span>Done</span></div>
@@ -154,6 +187,7 @@
 
   <header id="topctl">
     <button class="gctl" id="exit" aria-label="Exit"><svg class="ic"><use href="#i-close"/></svg></button>
+    <button class="gctl" id="pagepick-btn" aria-label="Jump to page" hidden><svg class="ic"><use href="#i-doc"/></svg></button>
     <button class="gctl" id="full" aria-label="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
   </header>
 

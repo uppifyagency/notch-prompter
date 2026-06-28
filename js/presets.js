@@ -1,6 +1,9 @@
 // presets.js — the option sets and their exact values, matching Textream 1:1.
 // Pure data + defaults; persisted by store.js.
 
+// Single source of truth for the app version (mirrors package.json; a test guards drift).
+export const APP_VERSION = '1.0.0';
+
 export const FONT_SIZES = {
   xs: { label: 'XS', pt: 14 },
   sm: { label: 'SM', pt: 16 },
@@ -50,13 +53,23 @@ export const SPEECH_LOCALES = {
   '':      { label: 'Auto (browser default)' },
   'en-US': { label: 'English (US)' },
   'en-GB': { label: 'English (UK)' },
+  'en-AU': { label: 'English (Australia)' },
+  'en-IN': { label: 'English (India)' },
   'it-IT': { label: 'Italiano' },
-  'es-ES': { label: 'Español' },
+  'es-ES': { label: 'Español (España)' },
+  'es-MX': { label: 'Español (México)' },
   'fr-FR': { label: 'Français' },
   'de-DE': { label: 'Deutsch' },
   'pt-BR': { label: 'Português (Brasil)' },
+  'pt-PT': { label: 'Português (Portugal)' },
   'nl-NL': { label: 'Nederlands' },
+  'pl-PL': { label: 'Polski' },
+  'ru-RU': { label: 'Русский' },
+  'tr-TR': { label: 'Türkçe' },
+  'ar-SA': { label: 'العربية' },
+  'hi-IN': { label: 'हिन्दी' },
   'zh-CN': { label: '中文 (简体)' },
+  'zh-TW': { label: '中文 (繁體)' },
   'ja-JP': { label: '日本語' },
   'ko-KR': { label: '한국어' },
 };
@@ -92,5 +105,6 @@ export const DEFAULTS = {
   autoNextPage: false,
   autoNextPageDelay: 3,
   speechLocale: '',     // '' → browser default
+  micId: '',            // '' → system default microphone (B1 / #30)
   script: '',
 };

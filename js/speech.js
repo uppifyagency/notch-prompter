@@ -71,9 +71,10 @@ export class AudioMeter {
     return avg > 0.08;
   }
 
-  async start() {
+  async start(deviceId = '') {
+    const audio = deviceId ? { deviceId: { exact: deviceId } } : true;
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio });
     } catch { return false; }
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     const source = this.ctx.createMediaStreamSource(this.stream);

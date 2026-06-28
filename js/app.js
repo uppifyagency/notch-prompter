@@ -4,15 +4,19 @@
 
 import {
   FONT_SIZES, FONT_FAMILIES, COLORS, CUE_BRIGHTNESS,
-  OVERLAY_MODES, LISTENING_MODES, MIRROR_AXES, SPEECH_LOCALES, LIMITS,
+  OVERLAY_MODES, LISTENING_MODES, MIRROR_AXES, SPEECH_LOCALES, LIMITS, APP_VERSION,
 } from './presets.js';
 import { Store } from './store.js';
 import { SpeechMatcher } from './matcher.js';
 import { Recognition, AudioMeter, speechSupported } from './speech.js';
 import { Notch } from './notch.js';
 import { Prompter } from './prompter.js';
-import { splitTextIntoWords, charOffsetForWordProgress, nextProgressFromWheel, clamp, lastSpokenWords, splitIntoPages } from './text.js';
+import { splitTextIntoWords, charOffsetForWordProgress, nextProgressFromWheel, clamp, lastSpokenWords, splitIntoPages, tokenizeForEditor } from './text.js';
 import { extractPptxText } from './pptx.js';
+import { fileKind, scriptFilename } from './files.js';
+import { addPage, removePage, movePage, joinPages, pagePreview } from './pages.js';
+import { pickDeviceId, audioInputs } from './devices.js';
+import { initDictation, reduceDictation } from './dictation.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -41,7 +45,10 @@ let lastSpoken = '';
 let micMuted = false;
 let pages = [''];        // G5 — script split into pages on "---" lines
 let pageIndex = 0;
+let readPages = new Set(); // B3 — page indices completed this session (read badges)
 let pageTimer = 0;       // pending auto-advance timeout
+let pageCountdown = 0;   // live "next page in Ns" ticker (#27)
+function clearPageTimers() { clearTimeout(pageTimer); clearInterval(pageCountdown); }
 
 /* ---------------------------------------------------- composer controls */
 
@@ -131,6 +138,10 @@ function buildComposer() {
   bindSlider('pagedelay', 'pd-val', 'autoNextPageDelay', (v) => `${Math.round(v)}s`);
 
   reflectMode();
+  renderPagesBar();
+  renderEditorHighlight();
+  renderPreview();
+  refreshMicDevices();
 }
 
 function bindSlider(id, valId, key, fmt) {
@@ -160,17 +171,92 @@ function reflectMode() {
   $('field-glass').hidden = overlay === 'fullscreen';   // fullscreen has no card
   // Voice language only applies to the mic-driven mode.
   $('field-locale').hidden = store.get('listeningMode') !== 'wordTracking';
+  // Classic mode has no microphone, so the mic picker is irrelevant there.
+  $('field-mic').hidden = store.get('listeningMode') === 'classic';
+}
+
+// Populate the microphone picker from the browser's device list (B1 / #30).
+// Labels are only revealed after mic permission, so they may be generic until then.
+async function refreshMicDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) { $('field-mic').hidden = true; return; }
+  let inputs = [];
+  try { inputs = audioInputs(await navigator.mediaDevices.enumerateDevices()); } catch { return; }
+  const sel = $('mic-device');
+  const chosen = pickDeviceId(inputs, store.get('micId'));
+  sel.replaceChildren(...inputs.map((d, i) => {
+    const o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || `Microphone ${i + 1}`;
+    if (d.deviceId === chosen) o.selected = true;
+    return o;
+  }));
+  if (chosen !== store.get('micId')) store.set('micId', chosen);
+  sel.onchange = (e) => store.set('micId', e.target.value);
 }
 
 /* ---------------------------------------------------- editor tools */
 
-$('script').addEventListener('input', (e) => store.set('script', e.target.value));
-$('file').addEventListener('change', (e) => {
-  const f = e.target.files[0];
+// Single write path for the script: textarea + persistence + page-bar + highlight.
+function setScript(text) {
+  $('script').value = text;
+  store.set('script', text);
+  renderPagesBar();
+  renderEditorHighlight();
+}
+$('script').addEventListener('input', (e) => { store.set('script', e.target.value); renderPagesBar(); renderEditorHighlight(); });
+
+// B5 (#29) — paint the annotation-highlight backdrop from the textarea content.
+const editorHl = $('script-hl');
+function renderEditorHighlight() {
+  editorHl.replaceChildren(...tokenizeForEditor($('script').value).map((s) => {
+    if (!s.annotation) return document.createTextNode(s.text);
+    const span = document.createElement('span');
+    span.className = 'ann';
+    span.textContent = s.text;
+    return span;
+  }));
+  editorHl.scrollTop = $('script').scrollTop;
+}
+$('script').addEventListener('scroll', () => { editorHl.scrollTop = $('script').scrollTop; });
+
+// #53 — live settings preview: a mini prompter reusing the real Prompter renderer,
+// reflecting font / size / colors / cue brightness as you change them.
+const previewPrompter = new Prompter($('pv-scroll'), $('pv-text'), null);
+const PV_WORDS = splitTextIntoWords('Read with you, word by word. [breathe] Calm, clear, on cue.');
+const PV_TOTAL = PV_WORDS.join(' ').length;
+previewPrompter.setScript(PV_WORDS);
+function renderPreview() {
+  const txt = $('pv-text');
+  txt.style.fontFamily = FONT_FAMILIES[store.get('fontFamily')].css;
+  txt.style.fontSize = `${FONT_SIZES[store.get('fontSize')].pt}px`;
+  previewPrompter.render({
+    charCount: 12,                       // a low value: current word stays near the top (no autoscroll)
+    totalCharCount: PV_TOTAL,
+    wordTracking: true,
+    fontColor: COLORS[store.get('fontColor')].css,
+    cueColor: COLORS[store.get('cueColor')].css,
+    brightness: CUE_BRIGHTNESS[store.get('cueBrightness')],
+    levels: [],
+  });
+}
+// Visual settings funnel through clicks (segments/swatches) and slider input.
+$('composer').addEventListener('click', renderPreview);
+$('composer').addEventListener('input', renderPreview);
+// Load a dropped or picked file into the editor, routing by its kind (files.js).
+function loadFile(f) {
   if (!f) return;
-  const setScript = (text) => { $('script').value = text; store.set('script', text); };
+  const kind = fileKind(f.name, f.type);
+  if (kind === 'keynote') {
+    alert('Keynote (.key) files can’t be read directly. In Keynote, export your slides as '
+      + 'PowerPoint (.pptx) and drop that here.');
+    return;
+  }
+  if (kind === 'unknown') {
+    alert('Unsupported file. Drop a .txt, .md or .pptx file.');
+    return;
+  }
   const r = new FileReader();
-  if (/\.pptx$/i.test(f.name)) {
+  if (kind === 'pptx') {
     // G6 — extract slide text from a PowerPoint deck (one slide = one page).
     r.onload = async () => {
       try { setScript(await extractPptxText(new Uint8Array(r.result))); }
@@ -181,10 +267,133 @@ $('file').addEventListener('change', (e) => {
     r.onload = () => setScript(r.result);
     r.readAsText(f);
   }
+}
+$('file').addEventListener('change', (e) => {
+  loadFile(e.target.files[0]);
   e.target.value = ''; // allow re-selecting the same file
 });
-$('sample').onclick = () => { $('script').value = SAMPLE; store.set('script', SAMPLE); };
-$('clear').onclick = () => { $('script').value = ''; store.set('script', ''); $('script').focus(); };
+// Drag-and-drop onto the composer (#34) — same routing as the file picker.
+const composer = $('composer');
+composer.addEventListener('dragover', (e) => { e.preventDefault(); composer.classList.add('dropping'); });
+composer.addEventListener('dragleave', (e) => { if (e.target === composer) composer.classList.remove('dropping'); });
+composer.addEventListener('drop', (e) => {
+  e.preventDefault();
+  composer.classList.remove('dropping');
+  loadFile(e.dataTransfer.files[0]);
+});
+$('sample').onclick = () => setScript(SAMPLE);
+// B6 (#35) — save the script to a .txt file (Open is already covered by the file picker).
+$('savefile').onclick = () => {
+  const t = $('script').value;
+  if (!t.trim()) return;
+  const url = URL.createObjectURL(new Blob([t], { type: 'text/plain' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = scriptFilename(t);
+  a.click();
+  URL.revokeObjectURL(url);
+};
+$('clear').onclick = () => { setScript(''); $('script').focus(); };
+
+/* ------------------------------------------------ page manager (#24) */
+// The textarea string stays the single source of truth: we split it into a deck,
+// transform with the pure ops (pages.js), then join back. Read-status badges are
+// a stage-time concept (see B3) and intentionally not shown in the composer.
+const pagesBar = $('pages-bar');
+function deck() { return splitIntoPages($('script').value); }
+
+// A new page needs placeholder text: splitIntoPages drops empty pages, so an
+// empty new page would vanish on the round-trip. The placeholder is then selected
+// so the user types straight over it.
+$('addpage').onclick = () => {
+  const d = deck();
+  setScript(joinPages(addPage(d, d.length, 'New page')));
+  selectPage('New page');
+};
+
+function renderPagesBar() {
+  const d = deck();
+  pagesBar.hidden = d.length <= 1;       // nothing to manage with a single page
+  if (pagesBar.hidden) { pagesBar.replaceChildren(); return; }
+  pagesBar.replaceChildren(...d.map((page, i) => pageChip(page, i, d.length)));
+}
+
+function pageChip(page, i, total) {
+  const chip = document.createElement('div');
+  chip.className = 'page-chip';
+  const label = document.createElement('button');
+  label.className = 'page-label';
+  label.textContent = pagePreview(page, i);
+  label.title = 'Select this page in the editor';
+  label.onclick = () => selectPage(page);
+  const up = chipBtn('▲', 'Move up', i > 0, () => setScript(joinPages(movePage(deck(), i, i - 1))));
+  const down = chipBtn('▼', 'Move down', i < total - 1, () => setScript(joinPages(movePage(deck(), i, i + 1))));
+  const del = chipBtn('✕', 'Delete page', true, () => setScript(joinPages(removePage(deck(), i))));
+  chip.append(label, up, down, del);
+  return chip;
+}
+
+function chipBtn(glyph, title, enabled, onClick) {
+  const b = document.createElement('button');
+  b.className = 'chip-btn';
+  b.textContent = glyph;
+  b.title = title;
+  b.disabled = !enabled;
+  if (enabled) b.onclick = onClick;
+  return b;
+}
+
+// Best-effort navigation: select the page's text in the textarea so it can be edited in place.
+function selectPage(page) {
+  const ta = $('script');
+  const at = ta.value.indexOf(page.trim());
+  if (at < 0) return;
+  ta.focus();
+  ta.setSelectionRange(at, at + page.trim().length);
+}
+
+/* -------------------------------------------- dictation into editor (#28) */
+// Reuses the Recognition engine, folding transcripts through the pure reducer
+// (dictation.js) into the textarea at the caret.
+let dictation = null;       // reducer state while dictating, else null
+let dictateRec = null;      // the active Recognition, else null
+$('dictate').onclick = () => (dictateRec ? stopDictation() : startDictation());
+
+function startDictation() {
+  if (!speechSupported) { alert('Voice dictation needs Chrome or Safari.'); return; }
+  const ta = $('script');
+  dictation = initDictation(ta.value, ta.selectionStart ?? ta.value.length);
+  dictateRec = new Recognition({
+    onTranscript: (text, isFinal) => {
+      dictation = reduceDictation(dictation, text, isFinal);
+      ta.value = dictation.text;
+      ta.setSelectionRange(dictation.caret, dictation.caret);
+      store.set('script', dictation.text);
+      renderPagesBar();
+      renderEditorHighlight();
+    },
+    onError: (err) => {
+      if (err === 'not-allowed' || err === 'unsupported') {
+        stopDictation();
+        alert('Microphone blocked or unsupported. Allow access, or use Chrome/Safari.');
+      }
+    },
+  });
+  dictateRec.start(store.get('speechLocale'));
+  setDictateUI(true);
+  ta.focus();
+}
+
+function stopDictation() {
+  if (dictateRec) { dictateRec.stop(); dictateRec = null; }
+  dictation = null;
+  setDictateUI(false);
+}
+
+function setDictateUI(on) {
+  const b = $('dictate');
+  b.classList.toggle('recording', on);
+  b.querySelector('span').textContent = on ? 'Stop' : 'Dictate';
+}
 $('share').onclick = async () => {
   const t = $('script').value.trim();
   if (!t) return;
@@ -192,6 +401,16 @@ $('share').onclick = async () => {
   try { await navigator.clipboard.writeText(url); flash($('share'), 'Copied'); }
   catch { prompt('Copy this link:', url); }
 };
+// A3 (#54) — reset preferences to defaults (keeping the script); reload to re-render cleanly.
+$('reset').onclick = () => {
+  if (!confirm('Reset all settings to defaults? Your script is kept.')) return;
+  store.reset();
+  location.reload();
+};
+// A4 (#56) — About dialog.
+$('about-version').textContent = `v${APP_VERSION}`;
+$('about').onclick = () => $('about-dlg').showModal();
+$('about-close').onclick = () => $('about-dlg').close();
 function flash(btn, msg) {
   const span = btn.querySelector('span');
   const old = span.textContent;
@@ -242,7 +461,7 @@ function updatePageIndicator() {
 
 // Jump to another page (manual arrows or auto-advance). Resets reading position.
 function goToPage(i, autoplay) {
-  clearTimeout(pageTimer);
+  clearPageTimers();
   if (i < 0 || i >= pages.length) return;
   stopPlayback();
   setMicMuted(false);
@@ -256,11 +475,34 @@ function goToPage(i, autoplay) {
   if (autoplay) play();
 }
 
+// B3 (#26) — stage page-picker: jump to any page, with read badges + current marker.
+$('pagepick-btn').onclick = () => openPagePicker();
+function openPagePicker() {
+  const dlg = $('pagepick');
+  const wasPlaying = playing;
+  dlg.replaceChildren(...pages.map((page, i) => {
+    const item = document.createElement('button');
+    item.className = 'pp-item';
+    if (i === pageIndex) item.classList.add('current');
+    if (readPages.has(i)) item.classList.add('read');
+    const dot = document.createElement('span');
+    dot.className = 'pp-dot';
+    const label = document.createElement('span');
+    label.textContent = pagePreview(page, i);
+    item.append(dot, label);
+    item.onclick = () => { dlg.close(); goToPage(i, wasPlaying); };
+    return item;
+  }));
+  dlg.showModal();
+}
+
 function enter() {
   const full = $('script').value.trim();
   if (!full) { $('script').focus(); return; }
 
   pages = splitIntoPages(full);
+  readPages = new Set();
+  $('pagepick-btn').hidden = pages.length <= 1;
   loadPage(0);
 
   applyReaderStyle();
@@ -304,7 +546,9 @@ function restart() {
 async function startListening(mode) {
   if (mode !== 'classic') {
     meter = new AudioMeter(30);
-    await meter.start();
+    await meter.start(store.get('micId'));
+    // After permission, labels become available — refresh the picker for next time.
+    refreshMicDevices();
   }
   if (mode === 'wordTracking') {
     matcher.matchStartOffset = matcher.recognizedCharCount;
@@ -385,7 +629,7 @@ function pause() {
 function stopPlayback() {
   playing = false;
   clearInterval(loop);
-  clearTimeout(pageTimer);
+  clearPageTimers();
   stopListening();
 }
 
@@ -434,10 +678,17 @@ function paint() {
 function finish() {
   stopPlayback();
   setPlayIcon(false);
-  // G5 — auto-advance to the next page after the configured delay.
+  readPages.add(pageIndex);   // B3 — this page has been read through
+  // G5/#27 — auto-advance to the next page after the configured delay, with a
+  // visible per-second countdown (not just a static label).
   if (store.get('autoNextPage') && pageIndex < pages.length - 1) {
-    $('status').textContent = `Next page in ${store.get('autoNextPageDelay')}s…`;
-    pageTimer = setTimeout(() => goToPage(pageIndex + 1, true), store.get('autoNextPageDelay') * 1000);
+    let left = store.get('autoNextPageDelay');
+    $('status').textContent = `Next page in ${left}s…`;
+    pageCountdown = setInterval(() => {
+      left -= 1;
+      if (left > 0) $('status').textContent = `Next page in ${left}s…`;
+    }, 1000);
+    pageTimer = setTimeout(() => goToPage(pageIndex + 1, true), left * 1000);
     return;
   }
   $('done').hidden = false;
@@ -490,10 +741,29 @@ $('reader').addEventListener('pointerdown', (e) => {
   window.addEventListener('pointerup', up);
 });
 
-// G4 — mouse-wheel to catch up / rewind reading position (Classic & Voice-Activated).
-// Word Tracking is driven by the matcher, so there the wheel scrolls the text natively.
+// #9 — drag the bottom handle to resize the reader height (clamped to limits, persisted).
+$('reader-resize').addEventListener('pointerdown', (e) => {
+  e.preventDefault(); e.stopPropagation();   // don't also start a floating-card drag
+  const startY = e.clientY;
+  const startH = store.get('textHeight');
+  const { min, max } = LIMITS.textHeight;
+  const move = (ev) => {
+    const h = Math.round(clamp(startH + (ev.clientY - startY), min, max));
+    document.documentElement.style.setProperty('--reader-h', `${h}px`);
+    store.set('textHeight', h);
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+});
+
+// G4/#19 — mouse-wheel to catch up / rewind reading position, in ALL modes. In
+// Word Tracking the wheel becomes a manual correction: jumpTo sets the matcher's
+// position and frame() reads it back, so the highlight holds until speech advances.
 $('scroll').addEventListener('wheel', (e) => {
-  if (store.get('listeningMode') === 'wordTracking') return;
   if (!words.length) return;
   e.preventDefault();
   progress = nextProgressFromWheel(progress, e.deltaY, words.length);

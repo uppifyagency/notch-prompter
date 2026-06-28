@@ -2,8 +2,35 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   splitTextIntoWords, normalize, isAnnotation, letterCount, charOffsetForWordProgress, isCJK,
-  nextProgressFromWheel, clamp, lastSpokenWords, splitIntoPages,
+  nextProgressFromWheel, clamp, lastSpokenWords, splitIntoPages, tokenizeForEditor,
 } from '../js/text.js';
+
+test('tokenizeForEditor splits text into plain and [bracket] annotation segments', () => {
+  assert.deepEqual(tokenizeForEditor('say [pause] then go'), [
+    { text: 'say ', annotation: false },
+    { text: '[pause]', annotation: true },
+    { text: ' then go', annotation: false },
+  ]);
+});
+
+test('tokenizeForEditor returns one plain segment when there are no annotations', () => {
+  assert.deepEqual(tokenizeForEditor('just words'), [{ text: 'just words', annotation: false }]);
+});
+
+test('tokenizeForEditor handles adjacent annotations and drops empty gaps', () => {
+  assert.deepEqual(tokenizeForEditor('[a][b]'), [
+    { text: '[a]', annotation: true },
+    { text: '[b]', annotation: true },
+  ]);
+});
+
+test('tokenizeForEditor treats an unclosed bracket as plain text', () => {
+  assert.deepEqual(tokenizeForEditor('[oops no close'), [{ text: '[oops no close', annotation: false }]);
+});
+
+test('tokenizeForEditor returns an empty list for empty text', () => {
+  assert.deepEqual(tokenizeForEditor(''), []);
+});
 
 test('splitTextIntoWords splits on whitespace and newlines', () => {
   assert.deepEqual(splitTextIntoWords('hello   world\nfoo'), ['hello', 'world', 'foo']);

@@ -20,6 +20,13 @@ export class Store {
     this.#save();
   }
 
+  // Restore all preferences to DEFAULTS, but keep the user's script — a settings
+  // reset must not destroy content (Least Astonishment). Persists immediately.
+  reset() {
+    this.settings = { ...DEFAULTS, script: this.settings.script };
+    this.#save();
+  }
+
   #load() {
     try {
       const raw = localStorage.getItem(KEY);

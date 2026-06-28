@@ -47,6 +47,25 @@ export function normalize(text) {
   return out;
 }
 
+// The [bracket] cue pattern, shared by the editor highlighter (matches Textream's
+// HighlightingTextEditor, which highlights \[[^\]]+\] annotations).
+const BRACKET = /\[[^\]]+\]/g;
+
+// Split free text into plain / annotation segments for the editor backdrop (#29).
+// Annotation segments are [bracketed] cues; everything else is plain. Empty gaps
+// (e.g. between adjacent cues) are dropped.
+export function tokenizeForEditor(text) {
+  const segments = [];
+  let last = 0;
+  for (const m of text.matchAll(BRACKET)) {
+    if (m.index > last) segments.push({ text: text.slice(last, m.index), annotation: false });
+    segments.push({ text: m[0], annotation: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) segments.push({ text: text.slice(last), annotation: false });
+  return segments;
+}
+
 // An annotation word is a [bracketed] cue or an emoji-only token (no letters/digits).
 export function isAnnotation(word) {
   if (word.startsWith('[') && word.endsWith(']')) return true;
