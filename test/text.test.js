@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   splitTextIntoWords, normalize, isAnnotation, letterCount, charOffsetForWordProgress, isCJK,
+  nextProgressFromWheel, clamp, lastSpokenWords, splitIntoPages,
 } from '../js/text.js';
 
 test('splitTextIntoWords splits on whitespace and newlines', () => {
@@ -35,6 +36,50 @@ test('isAnnotation detects brackets and emoji-only tokens', () => {
 test('letterCount counts alphanumerics, min 1', () => {
   assert.equal(letterCount('hi!'), 2);
   assert.equal(letterCount('...'), 1);
+});
+
+test('splitIntoPages splits on a "---" line, trims, and drops empty pages', () => {
+  assert.deepEqual(splitIntoPages('one\n---\ntwo'), ['one', 'two']);
+  assert.deepEqual(splitIntoPages('just one page'), ['just one page']);
+  assert.deepEqual(splitIntoPages('a\n\n----\n\nb\n---\nc'), ['a', 'b', 'c']);
+});
+
+test('splitIntoPages returns a single empty page for empty input', () => {
+  assert.deepEqual(splitIntoPages(''), ['']);
+  assert.deepEqual(splitIntoPages('   \n---\n  '), ['']);
+});
+
+test('splitIntoPages does not treat a "---" inside a line as a break', () => {
+  assert.deepEqual(splitIntoPages('a -- b --- c'), ['a -- b --- c']);
+});
+
+test('lastSpokenWords keeps the trailing 5 words by default', () => {
+  assert.equal(lastSpokenWords('alpha bravo charlie delta echo foxtrot golf'), 'charlie delta echo foxtrot golf');
+  assert.equal(lastSpokenWords('one two three'), 'one two three');
+  assert.equal(lastSpokenWords(''), '');
+  assert.equal(lastSpokenWords('a b c d e f', 3), 'd e f');
+});
+
+test('clamp bounds a value to [lo, hi]', () => {
+  assert.equal(clamp(0.15, 0, 0.6), 0.15);
+  assert.equal(clamp(-1, 0, 0.6), 0);
+  assert.equal(clamp(5, 0, 0.6), 0.6);
+});
+
+test('nextProgressFromWheel advances forward on positive delta, proportional to it', () => {
+  // 60px of wheel at 30px/word = +2 words
+  assert.equal(nextProgressFromWheel(10, 60, 100, 30), 12);
+  // twice the delta moves twice as far
+  assert.equal(nextProgressFromWheel(10, 120, 100, 30), 14);
+});
+
+test('nextProgressFromWheel retreats on negative delta but never below 0', () => {
+  assert.equal(nextProgressFromWheel(5, -60, 100, 30), 3);
+  assert.equal(nextProgressFromWheel(1, -9000, 100, 30), 0);
+});
+
+test('nextProgressFromWheel clamps to the word count', () => {
+  assert.equal(nextProgressFromWheel(99, 9000, 100, 30), 100);
 });
 
 test('charOffsetForWordProgress maps whole and fractional progress', () => {

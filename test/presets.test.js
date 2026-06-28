@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   FONT_SIZES, FONT_FAMILIES, COLORS, CUE_BRIGHTNESS, LISTENING_MODES,
-  MIRROR_AXES, LIMITS, DEFAULTS,
+  MIRROR_AXES, LIMITS, DEFAULTS, SPEECH_LOCALES,
 } from '../js/presets.js';
 
 test('font size presets match Textream point sizes', () => {
@@ -35,9 +35,27 @@ test('mirror axes flip the correct scale factors', () => {
   assert.deepEqual([MIRROR_AXES.both.scaleX, MIRROR_AXES.both.scaleY], [-1, -1]);
 });
 
+test('speech locales offer an auto default plus explicit BCP-47 tags', () => {
+  assert.equal(SPEECH_LOCALES[''].label, 'Auto (browser default)');
+  assert.ok('en-US' in SPEECH_LOCALES);
+  assert.ok('it-IT' in SPEECH_LOCALES);
+  // the saved default ('') must be a selectable option
+  assert.ok(DEFAULTS.speechLocale in SPEECH_LOCALES);
+});
+
 test('limits and defaults are consistent', () => {
   assert.equal(LIMITS.notchWidth.default, 340);
   assert.equal(LIMITS.scrollSpeed.default, 3);
   assert.equal(DEFAULTS.listeningMode, 'wordTracking');
   assert.equal(DEFAULTS.overlayMode, 'pinned');
+});
+
+test('reader width can shrink to the 280px upstream minimum (G7)', () => {
+  assert.equal(LIMITS.notchWidth.min, 280);
+});
+
+test('glass opacity limit is 0–60% with a 0.15 default matching DEFAULTS (G3/C2)', () => {
+  assert.equal(LIMITS.glassOpacity.min, 0);
+  assert.equal(LIMITS.glassOpacity.max, 0.6);
+  assert.equal(LIMITS.glassOpacity.default, DEFAULTS.glassOpacity);
 });

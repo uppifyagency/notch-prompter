@@ -30,6 +30,7 @@
   --font-px: 20px;
   --notch-top: 0px;
   --mx: 1; --my: 1;
+  --glass-opacity: 0.15;        /* reader card fill — driven by the Glass opacity slider */
 
   color-scheme: dark;
 }
@@ -213,6 +214,22 @@ a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--
 .slider::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.16); }
 .slider::-moz-range-thumb { width: 24px; height: 24px; border: none; border-radius: 50%; background: #fff; }
 
+/* select (voice language) */
+.select {
+  -webkit-appearance: none; appearance: none;
+  width: 100%;
+  padding: 11px 38px 11px 14px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-1);
+  font-size: 14px; font-weight: 500;
+  border: 1px solid var(--hairline);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='rgba(255,255,255,0.5)' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+.select option { background: #1c1c1e; color: var(--text-1); }
+
 /* switch */
 .switch { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .switch input { position: absolute; opacity: 0; }
@@ -280,7 +297,7 @@ a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--
   width: var(--reader-w);
   height: calc(var(--reader-h) + var(--notch-top));
   padding: calc(var(--notch-top) + 10px) 18px 6px;
-  background: rgba(20, 20, 22, 0.62);
+  background: rgba(20, 20, 22, var(--glass-opacity));
   border: 1px solid var(--hairline);
   border-top: none;
   border-radius: 0 0 22px 22px;
@@ -295,7 +312,7 @@ a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--
   width: var(--reader-w);
   height: var(--reader-h);
   padding: 16px 18px;
-  background: rgba(20, 20, 22, 0.55);
+  background: rgba(20, 20, 22, var(--glass-opacity));
   border: 1px solid var(--hairline);
   border-radius: var(--radius-l);
   backdrop-filter: var(--blur);
@@ -334,8 +351,10 @@ a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--
 .wf { width: 3px; min-height: 3px; border-radius: 1.5px; background: rgba(255, 255, 255, 0.15); align-self: center; transition: height 0.08s ease, background 0.12s ease; }
 #spoken { flex: 1; font-size: 14px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
 #elapsed-clock { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
-#mic { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.1); display: flex; align-items: center; justify-content: center; color: var(--text-3); flex-shrink: 0; }
+#mic { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, 0.1); display: flex; align-items: center; justify-content: center; color: var(--text-3); flex-shrink: 0; cursor: pointer; transition: background 0.15s, color 0.15s; }
+#mic:hover { background: rgba(255, 255, 255, 0.16); }
 #mic.live { color: #facc15; }
+#mic.muted { color: #ff453a; background: rgba(255, 69, 58, 0.16); }
 #mic .ic { width: 17px; height: 17px; }
 
 /* done */
@@ -368,7 +387,11 @@ a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--
 #botctl { bottom: 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); justify-content: center; }
 #stage.idle #topctl, #stage.idle #botctl { opacity: 0; pointer-events: none; }
 
+#statuswrap { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 #status { font-size: 13px; color: var(--text-2); }
+#pageind { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.shint { color: var(--text-3); font-weight: 400; }
+.shint code { font-family: ui-monospace, Menlo, monospace; font-size: 0.92em; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 5px; }
 .gctl {
   width: 48px; height: 48px; border-radius: 50%;
   background: rgba(255, 255, 255, 0.1);

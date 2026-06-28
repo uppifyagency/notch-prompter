@@ -60,6 +60,33 @@ export function letterCount(word) {
   return Math.max(1, n);
 }
 
+// Split a script into pages on a line that is only dashes ("---", 3+), the
+// Markdown thematic-break convention. Pages are trimmed; empties are dropped.
+// Always returns at least one page (so the reader has something to show).
+export function splitIntoPages(text) {
+  const pages = text.split(/^\s*-{3,}\s*$/m).map((p) => p.trim()).filter(Boolean);
+  return pages.length ? pages : [''];
+}
+
+// The trailing N words of a transcript — the "what you just said" tail shown
+// under the reader. Upstream Textream shows the last 5.
+export function lastSpokenWords(text, n = 5) {
+  if (!text) return '';
+  return text.split(' ').filter(Boolean).slice(-n).join(' ');
+}
+
+// Bound a value to an inclusive [lo, hi] range.
+export function clamp(value, lo, hi) {
+  return Math.max(lo, Math.min(value, hi));
+}
+
+// Catch-up scrolling: turn a wheel deltaY (px) into a new word-progress value,
+// proportional to the scroll and clamped to [0, wordCount]. Scrolling down
+// (positive delta) reads forward; scrolling up rewinds.
+export function nextProgressFromWheel(progress, deltaY, wordCount, pixelsPerWord = 30) {
+  return clamp(progress + deltaY / pixelsPerWord, 0, wordCount);
+}
+
 // Map a fractional word-progress value to a character offset into the
 // space-joined source string. Whole words contribute length+1 (the space);
 // the current word contributes a fraction of its length.

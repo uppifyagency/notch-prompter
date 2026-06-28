@@ -44,6 +44,23 @@ export const LISTENING_MODES = {
   silencePaused: { label: 'Voice-Activated', desc: 'Scrolls while you speak, pauses when you are silent.' },
 };
 
+// Voice-recognition locales for the Web Speech API. '' = let the browser pick
+// (navigator.language). Keys are BCP-47 tags passed straight to recognition.lang.
+export const SPEECH_LOCALES = {
+  '':      { label: 'Auto (browser default)' },
+  'en-US': { label: 'English (US)' },
+  'en-GB': { label: 'English (UK)' },
+  'it-IT': { label: 'Italiano' },
+  'es-ES': { label: 'Español' },
+  'fr-FR': { label: 'Français' },
+  'de-DE': { label: 'Deutsch' },
+  'pt-BR': { label: 'Português (Brasil)' },
+  'nl-NL': { label: 'Nederlands' },
+  'zh-CN': { label: '中文 (简体)' },
+  'ja-JP': { label: '日本語' },
+  'ko-KR': { label: '한국어' },
+};
+
 export const MIRROR_AXES = {
   horizontal: { label: 'Horizontal', scaleX: -1, scaleY: 1 },
   vertical:   { label: 'Vertical',   scaleX: 1,  scaleY: -1 },
@@ -51,9 +68,10 @@ export const MIRROR_AXES = {
 };
 
 export const LIMITS = {
-  notchWidth:  { min: 310, max: 500, default: 340 },
-  textHeight:  { min: 100, max: 400, default: 150 },
-  scrollSpeed: { min: 0.5, max: 8,   default: 3 },   // words per second
+  notchWidth:   { min: 280, max: 500, default: 340 },
+  textHeight:   { min: 100, max: 400, default: 150 },
+  scrollSpeed:  { min: 0.5, max: 8,   default: 3 },    // words per second
+  glassOpacity: { min: 0,   max: 0.6, default: 0.15 }, // reader card fill opacity (0–60%)
 };
 
 export const DEFAULTS = {

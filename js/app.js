@@ -4,14 +4,15 @@
 
 import {
   FONT_SIZES, FONT_FAMILIES, COLORS, CUE_BRIGHTNESS,
-  OVERLAY_MODES, LISTENING_MODES, MIRROR_AXES,
+  OVERLAY_MODES, LISTENING_MODES, MIRROR_AXES, SPEECH_LOCALES, LIMITS,
 } from './presets.js';
 import { Store } from './store.js';
 import { SpeechMatcher } from './matcher.js';
 import { Recognition, AudioMeter, speechSupported } from './speech.js';
 import { Notch } from './notch.js';
 import { Prompter } from './prompter.js';
-import { splitTextIntoWords, charOffsetForWordProgress } from './text.js';
+import { splitTextIntoWords, charOffsetForWordProgress, nextProgressFromWheel, clamp, lastSpokenWords, splitIntoPages } from './text.js';
+import { extractPptxText } from './pptx.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -37,6 +38,10 @@ let loop = 0;
 let startedAt = 0;
 let elapsedBase = 0;
 let lastSpoken = '';
+let micMuted = false;
+let pages = [''];        // G5 — script split into pages on "---" lines
+let pageIndex = 0;
+let pageTimer = 0;       // pending auto-advance timeout
 
 /* ---------------------------------------------------- composer controls */
 
@@ -53,6 +58,18 @@ function seg(container, presets, current, onSelect) {
     };
     container.appendChild(b);
   }
+}
+
+function fillSelect(el, presets, current, onSelect) {
+  el.innerHTML = '';
+  for (const key of Object.keys(presets)) {
+    const o = document.createElement('option');
+    o.value = key;
+    o.textContent = presets[key].label;
+    if (key === current) o.selected = true;
+    el.appendChild(o);
+  }
+  el.onchange = (e) => onSelect(e.target.value);
 }
 
 function swatches(container, current, onSelect) {
@@ -80,6 +97,8 @@ function buildComposer() {
   });
   $('hint-listen').textContent = LISTENING_MODES[store.get('listeningMode')].desc;
 
+  fillSelect($('locale'), SPEECH_LOCALES, store.get('speechLocale'), (k) => store.set('speechLocale', k));
+
   seg($('seg-overlay'), OVERLAY_MODES, store.get('overlayMode'), (k) => {
     store.set('overlayMode', k); $('hint-overlay').textContent = OVERLAY_MODES[k].desc; reflectMode();
   });
@@ -96,6 +115,8 @@ function buildComposer() {
   bindSlider('speed', 'speed-val', 'scrollSpeed', (v) => `${v.toFixed(1)} w/s`);
   bindSlider('notchw', 'nw-val', 'notchWidth', (v) => `${Math.round(v)}px`);
   bindSlider('texth', 'th-val', 'textHeight', (v) => `${Math.round(v)}px`);
+  bindSlider('glass', 'glass-val', 'glassOpacity', (v) => `${Math.round(v * 100)}%`);
+  setGlassOpacity(store.get('glassOpacity')); // sync CSS var with the stored value up front
 
   $('mirror').checked = store.get('mirror');
   $('mirror').onchange = (e) => { store.set('mirror', e.target.checked); $('seg-mirror').hidden = !e.target.checked; };
@@ -103,6 +124,11 @@ function buildComposer() {
 
   $('elapsed').checked = store.get('showElapsedTime');
   $('elapsed').onchange = (e) => store.set('showElapsedTime', e.target.checked);
+
+  $('autopage').checked = store.get('autoNextPage');
+  $('autopage').onchange = (e) => { store.set('autoNextPage', e.target.checked); $('field-pagedelay').hidden = !e.target.checked; };
+  $('field-pagedelay').hidden = !store.get('autoNextPage');
+  bindSlider('pagedelay', 'pd-val', 'autoNextPageDelay', (v) => `${Math.round(v)}s`);
 
   reflectMode();
 }
@@ -116,13 +142,24 @@ function bindSlider(id, valId, key, fmt) {
     store.set(key, v);
     $(valId).textContent = fmt(v);
     if (id === 'speed') $('speed2').value = v;
+    if (id === 'glass') setGlassOpacity(v);
   };
 }
 
-// Show only the controls that matter for the current display mode.
+// The reader card's fill opacity. One setter so the slider has an immediate,
+// observable effect (no Connascence of Manual Task — C2).
+function setGlassOpacity(v) {
+  const a = clamp(v, LIMITS.glassOpacity.min, LIMITS.glassOpacity.max);
+  document.documentElement.style.setProperty('--glass-opacity', String(a));
+}
+
+// Show only the controls that matter for the current display / listening mode.
 function reflectMode() {
   const overlay = store.get('overlayMode');
   $('dim-fields').hidden = overlay === 'fullscreen';
+  $('field-glass').hidden = overlay === 'fullscreen';   // fullscreen has no card
+  // Voice language only applies to the mic-driven mode.
+  $('field-locale').hidden = store.get('listeningMode') !== 'wordTracking';
 }
 
 /* ---------------------------------------------------- editor tools */
@@ -131,9 +168,20 @@ $('script').addEventListener('input', (e) => store.set('script', e.target.value)
 $('file').addEventListener('change', (e) => {
   const f = e.target.files[0];
   if (!f) return;
+  const setScript = (text) => { $('script').value = text; store.set('script', text); };
   const r = new FileReader();
-  r.onload = () => { $('script').value = r.result; store.set('script', r.result); };
-  r.readAsText(f);
+  if (/\.pptx$/i.test(f.name)) {
+    // G6 — extract slide text from a PowerPoint deck (one slide = one page).
+    r.onload = async () => {
+      try { setScript(await extractPptxText(new Uint8Array(r.result))); }
+      catch (err) { alert(err.message || 'Could not read this .pptx file.'); }
+    };
+    r.readAsArrayBuffer(f);
+  } else {
+    r.onload = () => setScript(r.result);
+    r.readAsText(f);
+  }
+  e.target.value = ''; // allow re-selecting the same file
 });
 $('sample').onclick = () => { $('script').value = SAMPLE; store.set('script', SAMPLE); };
 $('clear').onclick = () => { $('script').value = ''; store.set('script', ''); $('script').focus(); };
@@ -164,6 +212,7 @@ function applyReaderStyle() {
   const on = store.get('mirror');
   root.setProperty('--mx', on ? axis.scaleX : 1);
   root.setProperty('--my', on ? axis.scaleY : 1);
+  setGlassOpacity(store.get('glassOpacity'));
   $('text').style.fontFamily = FONT_FAMILIES[store.get('fontFamily')].css;
 
   // floating starts centred unless dragged
@@ -175,13 +224,44 @@ function applyReaderStyle() {
   }
 }
 
-function enter() {
-  const script = $('script').value.trim();
-  if (!script) { $('script').focus(); return; }
-
+// Load one page's text into the matcher / prompter (G5).
+function loadPage(i) {
+  pageIndex = i;
+  const script = pages[i];
   words = splitTextIntoWords(script);
   totalChar = matcher.start(script).length;
   prompter.setScript(words);
+  updatePageIndicator();
+}
+
+function updatePageIndicator() {
+  const multi = pages.length > 1;
+  $('pageind').hidden = !multi;
+  if (multi) $('pageind').textContent = `${pageIndex + 1} / ${pages.length}`;
+}
+
+// Jump to another page (manual arrows or auto-advance). Resets reading position.
+function goToPage(i, autoplay) {
+  clearTimeout(pageTimer);
+  if (i < 0 || i >= pages.length) return;
+  stopPlayback();
+  setMicMuted(false);
+  loadPage(i);
+  progress = 0; charCount = 0; lastSpoken = ''; elapsedBase = 0;
+  matcher.jumpTo(0);
+  $('done').hidden = true;
+  $('status').textContent = 'Ready';
+  paint();
+  setPlayIcon(false);
+  if (autoplay) play();
+}
+
+function enter() {
+  const full = $('script').value.trim();
+  if (!full) { $('script').focus(); return; }
+
+  pages = splitIntoPages(full);
+  loadPage(0);
 
   applyReaderStyle();
   $('composer').hidden = true;
@@ -210,6 +290,7 @@ function exit() {
 
 function restart() {
   stopPlayback();
+  setMicMuted(false);
   progress = 0; charCount = 0; lastSpoken = ''; elapsedBase = 0;
   matcher.jumpTo(0);
   paint();
@@ -218,20 +299,9 @@ function restart() {
   setPlayIcon(false);
 }
 
-async function play() {
-  if (playing) return;
-  const mode = store.get('listeningMode');
-
-  if (mode === 'wordTracking' && !speechSupported) {
-    $('micwarn').hidden = false;
-    $('micwarn').textContent = 'Voice tracking is not supported in this browser. Try Classic mode, or Safari/Chrome.';
-    return;
-  }
-
-  playing = true;
-  setPlayIcon(true);
-  startedAt = performance.now();
-
+// Start the microphone layer the current mode needs. Extracted so play() and
+// un-muting share one path (no duplicated mic setup — CQS Command).
+async function startListening(mode) {
   if (mode !== 'classic') {
     meter = new AudioMeter(30);
     await meter.start();
@@ -251,10 +321,51 @@ async function play() {
           pause();
         }
       },
-      onState: (on) => $('mic').classList.toggle('live', on),
+      onState: (on) => $('mic').classList.toggle('live', on && !micMuted),
     });
     recognition.start(store.get('speechLocale'));
   }
+}
+
+// Tear down all mic capture. The single teardown for pause / stop / mute.
+function stopListening() {
+  if (recognition) { recognition.stop(); recognition = null; }
+  if (meter) { meter.stop(); meter = null; }
+  $('mic').classList.remove('live');
+}
+
+// Mute = silence the mic without leaving the session. In Word Tracking the
+// highlight freezes; in Voice-Activated the scroll pauses; the clock keeps running.
+function setMicMuted(on) {
+  micMuted = on;
+  const m = $('mic');
+  m.classList.toggle('muted', on);
+  m.setAttribute('aria-pressed', String(on));
+  m.setAttribute('aria-label', on ? 'Unmute microphone' : 'Mute microphone');
+  m.setAttribute('title', on ? 'Unmute microphone' : 'Mute microphone');
+  m.querySelector('use').setAttribute('href', on ? '#i-mic-off' : '#i-mic');
+  if (on) {
+    stopListening();
+  } else if (playing && store.get('listeningMode') !== 'classic') {
+    startListening(store.get('listeningMode'));
+  }
+}
+
+async function play() {
+  if (playing) return;
+  const mode = store.get('listeningMode');
+
+  if (mode === 'wordTracking' && !speechSupported) {
+    $('micwarn').hidden = false;
+    $('micwarn').textContent = 'Voice tracking is not supported in this browser. Try Classic mode, or Safari/Chrome.';
+    return;
+  }
+
+  playing = true;
+  setPlayIcon(true);
+  startedAt = performance.now();
+
+  if (!micMuted) await startListening(mode);
 
   $('status').textContent = LISTENING_MODES[mode].label;
   loop = setInterval(frame, 100);
@@ -264,18 +375,18 @@ function pause() {
   playing = false;
   setPlayIcon(false);
   clearInterval(loop);
-  if (recognition) { recognition.stop(); recognition = null; }
-  if (meter) { elapsedBase += performance.now() - startedAt; meter.stop(); meter = null; }
-  $('mic').classList.remove('live');
+  // Accumulate elapsed in every mode (the clock runs in Classic too, where
+  // there is no meter — the old meter-guarded version dropped paused time).
+  elapsedBase += performance.now() - startedAt;
+  stopListening();
   $('status').textContent = 'Paused';
 }
 
 function stopPlayback() {
   playing = false;
   clearInterval(loop);
-  if (recognition) { recognition.stop(); recognition = null; }
-  if (meter) { meter.stop(); meter = null; }
-  $('mic').classList.remove('live');
+  clearTimeout(pageTimer);
+  stopListening();
 }
 
 function frame() {
@@ -316,15 +427,21 @@ function paint() {
     levels: meter ? meter.levels : [],
   });
   if ($('spoken').style.display !== 'none') {
-    $('spoken').textContent = lastSpoken ? lastSpoken.split(' ').slice(-6).join(' ') : '';
+    $('spoken').textContent = lastSpokenWords(lastSpoken);
   }
 }
 
 function finish() {
   stopPlayback();
   setPlayIcon(false);
+  // G5 — auto-advance to the next page after the configured delay.
+  if (store.get('autoNextPage') && pageIndex < pages.length - 1) {
+    $('status').textContent = `Next page in ${store.get('autoNextPageDelay')}s…`;
+    pageTimer = setTimeout(() => goToPage(pageIndex + 1, true), store.get('autoNextPageDelay') * 1000);
+    return;
+  }
   $('done').hidden = false;
-  $('status').textContent = 'Done';
+  $('status').textContent = pages.length > 1 ? 'Done (last page)' : 'Done';
 }
 
 function setPlayIcon(on) {
@@ -373,6 +490,19 @@ $('reader').addEventListener('pointerdown', (e) => {
   window.addEventListener('pointerup', up);
 });
 
+// G4 — mouse-wheel to catch up / rewind reading position (Classic & Voice-Activated).
+// Word Tracking is driven by the matcher, so there the wheel scrolls the text natively.
+$('scroll').addEventListener('wheel', (e) => {
+  if (store.get('listeningMode') === 'wordTracking') return;
+  if (!words.length) return;
+  e.preventDefault();
+  progress = nextProgressFromWheel(progress, e.deltaY, words.length);
+  charCount = charOffsetForWordProgress(progress, words, totalChar);
+  matcher.jumpTo(charCount);
+  paint();
+  showControls();
+}, { passive: false });
+
 $('scroll').addEventListener('click', (e) => {
   if (dragMoved) { dragMoved = false; return; }
   const w = e.target.closest('.w');
@@ -389,6 +519,16 @@ $('scroll').addEventListener('click', (e) => {
 });
 
 /* ---------------------------------------------------- wiring */
+
+// G2 — mute/unmute the mic from the reader (voice modes only).
+$('mic').addEventListener('click', () => {
+  if (store.get('listeningMode') === 'classic') return;
+  setMicMuted(!micMuted);
+  showControls();
+});
+$('mic').addEventListener('keydown', (e) => {
+  if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); $('mic').click(); }
+});
 
 $('start').onclick = enter;
 $('exit').onclick = exit;
@@ -410,6 +550,8 @@ document.addEventListener('keydown', (e) => {
   if ($('stage').hidden) return;
   if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); showControls(); }
   if (e.code === 'Escape' && !document.fullscreenElement) exit();
+  if (e.code === 'ArrowRight' && pageIndex < pages.length - 1) { e.preventDefault(); goToPage(pageIndex + 1, playing); showControls(); }
+  if (e.code === 'ArrowLeft' && pageIndex > 0) { e.preventDefault(); goToPage(pageIndex - 1, playing); showControls(); }
 });
 
 buildComposer();
