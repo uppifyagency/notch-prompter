@@ -1,0 +1,78 @@
+// presets.js — the option sets and their exact values, matching Textream 1:1.
+// Pure data + defaults; persisted by store.js.
+
+export const FONT_SIZES = {
+  xs: { label: 'XS', pt: 14 },
+  sm: { label: 'SM', pt: 16 },
+  lg: { label: 'LG', pt: 20 },
+  xl: { label: 'XL', pt: 24 },
+};
+
+export const FONT_FAMILIES = {
+  sans:     { label: 'Sans',     css: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", system-ui, sans-serif' },
+  serif:    { label: 'Serif',    css: 'ui-serif, "New York", Georgia, "Times New Roman", serif' },
+  mono:     { label: 'Mono',     css: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace' },
+  dyslexia: { label: 'Dyslexia', css: '"OpenDyslexic3", "OpenDyslexic", ui-rounded, "SF Pro Rounded", system-ui, sans-serif' },
+};
+
+export const COLORS = {
+  white:  { label: 'White',  css: '#ffffff' },
+  yellow: { label: 'Yellow', css: 'rgb(255,214,10)' },
+  green:  { label: 'Green',  css: 'rgb(51,214,74)' },
+  blue:   { label: 'Blue',   css: 'rgb(79,140,255)' },
+  pink:   { label: 'Pink',   css: 'rgb(255,97,145)' },
+  orange: { label: 'Orange', css: 'rgb(255,158,10)' },
+};
+
+// Opacity for unread vs already-read annotation cues.
+export const CUE_BRIGHTNESS = {
+  dim:    { label: 'Dim',    unread: 0.2,  read: 0.5 },
+  low:    { label: 'Low',    unread: 0.35, read: 0.6 },
+  medium: { label: 'Medium', unread: 0.5,  read: 0.7 },
+  bright: { label: 'Bright', unread: 0.8,  read: 1.0 },
+};
+
+export const OVERLAY_MODES = {
+  pinned:     { label: 'Pinned to Notch', desc: 'Anchored below the notch at the top of your screen.' },
+  floating:   { label: 'Floating Window', desc: 'A draggable card you can place anywhere.' },
+  fullscreen: { label: 'Fullscreen',      desc: 'Fullscreen teleprompter. Press Esc to stop.' },
+};
+
+export const LISTENING_MODES = {
+  wordTracking:  { label: 'Word Tracking',  desc: 'Tracks each word you say and highlights it in real time.' },
+  classic:       { label: 'Classic',        desc: 'Auto-scrolls at a constant speed. No microphone needed.' },
+  silencePaused: { label: 'Voice-Activated', desc: 'Scrolls while you speak, pauses when you are silent.' },
+};
+
+export const MIRROR_AXES = {
+  horizontal: { label: 'Horizontal', scaleX: -1, scaleY: 1 },
+  vertical:   { label: 'Vertical',   scaleX: 1,  scaleY: -1 },
+  both:       { label: 'Both',       scaleX: -1, scaleY: -1 },
+};
+
+export const LIMITS = {
+  notchWidth:  { min: 310, max: 500, default: 340 },
+  textHeight:  { min: 100, max: 400, default: 150 },
+  scrollSpeed: { min: 0.5, max: 8,   default: 3 },   // words per second
+};
+
+export const DEFAULTS = {
+  fontSize: 'lg',
+  fontFamily: 'sans',
+  fontColor: 'white',
+  cueColor: 'white',
+  cueBrightness: 'dim',
+  overlayMode: 'pinned',
+  listeningMode: 'wordTracking',
+  mirrorAxis: 'horizontal',
+  mirror: false,
+  scrollSpeed: 3,
+  notchWidth: 340,
+  textHeight: 150,
+  glassOpacity: 0.15,
+  showElapsedTime: true,
+  autoNextPage: false,
+  autoNextPageDelay: 3,
+  speechLocale: '',     // '' → browser default
+  script: '',
+};

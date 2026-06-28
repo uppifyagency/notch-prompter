@@ -1,0 +1,11 @@
+{
+  "name": "notch-prompter",
+  "version": "1.0.0",
+  "description": "Notch Prompter by Vlad — a browser teleprompter with a notch-pinned reader, voice word-tracking, and an Apple-style glass UI.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "dev": "python3 -m http.server 8000"
+  },
+  "license": "MIT"
+}
