@@ -1,5 +1,12 @@
 # Implementation Plan — closing the web-portable gaps
 
+> **STATUS: COMPLETE (2026-06-28).** 12 features shipped via TDD + live verification;
+> 71/71 tests; committed `93e8f1b`, pushed to main, deployed to production
+> (notch-prompter-wine.vercel.app) and smoke-tested live (all controls present, OpenDyslexic
+> loaded, no JS console errors). Deferred with rationale: A5 (QR), #19b (rubber-band),
+> D1 (WASM speech — owner decision). Nothing left to implement in scope.
+
+
 > Source of work: [GAP-ANALYSIS.md](GAP-ANALYSIS.md). Method: Outside-In TDD (London),
 > logic pushed out of the DOM into pure `node:test` functions, green at every step.
 > Ordered by **Theory of Constraints** (value ÷ effort, credibility first), not by gap number.
